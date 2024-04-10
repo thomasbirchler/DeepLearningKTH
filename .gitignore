@@ -1,5 +1,8 @@
-Assignment1/Cost
+#Assignment1/Cost
 Assignment1/Dataset/
-Assignment1/Loss
-Assignment1/Plots/
-Assignment1/Weights
+#Assignment1/Loss
+#Assignment1/Plots/
+#Assignment1/Weights
+
+*.npy
+*.png
