@@ -1,5 +1,6 @@
 import collections
 import numpy as np
+import copy
 
 
 class RNN:
@@ -28,6 +29,62 @@ class Gradients:
         self.V = np.zeros_like(rnn_model.V)  # Gradient for weight matrix V
         self.b = np.zeros_like(rnn_model.b)  # Gradient for bias vector b
         self.c = np.zeros_like(rnn_model.c)  # Gradient for bias vector c
+
+
+def compare_gradients(numerical_grad, analytical_grad):
+    for param_name in vars(analytical_grad).keys():
+        num_grad = getattr(numerical_grad, param_name)
+        ana_grad = getattr(analytical_grad, param_name)
+        difference = num_grad - ana_grad
+        # print('Size of num_grad for param', param_name, num_grad.shape)
+        # print('Size of ana_grad for param', param_name, ana_grad.shape)
+        print(f'Difference between numerical and analytical gradients for param {param_name}: {difference}')
+        # TODO: plot difference
+
+
+def compute_grads_num(X, Y, RNN, h):
+    grads = Gradients(RNN)
+    h = np.array([h])
+
+    # for j in vars(grads).keys():
+    #     print(getattr(grads, j))
+
+    for param_name in vars(RNN).keys():
+        # print(f'Param_name {param_name}')
+        # print(f"Computing numerical gradient for {param_name}")
+        grad = compute_grad_num_slow(X, Y, param_name, RNN, h)
+        setattr(grads, param_name, grad)
+
+    return grads
+
+
+def compute_grad_num_slow(X, Y, param_name, RNN, h):
+    # Get the parameter as a numpy array
+    param = getattr(RNN, param_name)
+    # print(param)
+    n = param.size
+    grad = np.zeros(param.shape)
+
+    # It's useful to flatten and reshape for generic parameter dimensions
+    param_flat = param.flatten()
+    for i in range(n):
+        RNN_try = copy.deepcopy(RNN)
+
+        # Perturb the parameter down
+        param_flat[i] -= h
+        setattr(RNN_try, param_name, param_flat.reshape(param.shape))
+        l1, _, _ = forward_pass(RNN_try, X, Y, h)
+
+        # Perturb the parameter up
+        param_flat[i] += 2 * h
+        setattr(RNN_try, param_name, param_flat.reshape(param.shape))
+        l2, _, _ = forward_pass(RNN_try, X, Y, h)
+
+        # Reset the parameter
+        param_flat[i] -= h
+        grad.flat[i] = (l2 - l1) / (2 * h)
+
+    return grad
 
 
 def softmax(x):
@@ -100,14 +157,15 @@ def prepare_data(book_data, seq_length, char_to_ind, K):
 def forward_pass(RNN, X, Y, h0):
     """Perform the RNN forward pass and compute the cross-entropy loss."""
     m, K = RNN.W.shape[0], RNN.V.shape[0]
-    _, T = X.shape  # K x seq_length
-    h = np.zeros((m, T + 1))
-    p = np.zeros((K, T))
+    _, seq_length = X.shape  # K x seq_length
+    h = np.zeros((m, seq_length + 1))
+    p = np.zeros((K, seq_length))
     h[:, 0] = h0.flatten()
+    # h[:, 0] = h0
     loss = 0
 
     # Forward pass
-    for t in range(T):
+    for t in range(seq_length):
         xt = X[:, t].reshape(-1, 1)
         h[:, t + 1] = np.tanh(np.dot(RNN.W, h[:, t].reshape(-1, 1)) + np.dot(RNN.U, xt) + RNN.b).squeeze()
         ot = np.dot(RNN.V, h[:, t + 1].reshape(-1, 1)) + RNN.c
@@ -177,9 +235,9 @@ def preprocess_text(text):
 
 
 def set_hyperparams():
-    dimensionality_hidden_layer = 100
+    dimensionality_hidden_layer = 5
     eta = 0.1
-    seq_length = 25
+    seq_length = 2
 
     return [dimensionality_hidden_layer, eta, seq_length]
 
@@ -196,9 +254,9 @@ def main():
     X, Y = prepare_data(book_data, hyper_params[2], char_to_ind, K)
 
     # Print some example mappings to demonstrate
-    print("Character to Index Mapping (partial):", list(char_to_ind.items())[:10])
-    print("Index to Character Mapping (partial):", list(ind_to_char.items())[:10])
-    print(f'Unique chars: {K}')
+    # print("Character to Index Mapping (partial):", list(char_to_ind.items())[:10])
+    # print("Index to Character Mapping (partial):", list(ind_to_char.items())[:10])
+    # print(f'Unique chars: {K}')
 
     rnn_model = RNN(hyper_params[0], K)
     h0 = np.zeros((hyper_params[0], 1))
@@ -206,16 +264,21 @@ def main():
     x0[0] = 1  # Assume first character is a dummy with index
 
     loss, h, p = forward_pass(rnn_model, X, Y, h0)
-    print('loss: ', loss)
+    # print('Loss: ', loss)
 
-    generated_text = synthesize_sequence(rnn_model, h0, x0, 20, char_to_ind, ind_to_char)
-    print("Generated Sequence:", generated_text)
+    # generated_text = synthesize_sequence(rnn_model, h0, x0, 20, char_to_ind, ind_to_char)
+    # print("Generated Sequence:", generated_text)
+
+    numerical_grad = compute_grads_num(X, Y, rnn_model, 0.0001)
 
     gradients = Gradients(rnn_model)
-    gradients = backward_pass(rnn_model, gradients, X, Y, h, p)
-    clip_gradients(gradients)
+    analytical_gradients = backward_pass(rnn_model, gradients, X, Y, h, p)
 
-    update_parameters(rnn_model, gradients, learning_rate=0.01)
+    compare_gradients(numerical_grad, analytical_gradients)
+
+    # clip_gradients(gradients)
+
+    # update_parameters(rnn_model, gradients, learning_rate=0.01)
 
 
 if __name__ == '__main__':
