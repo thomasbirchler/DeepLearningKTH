@@ -38,7 +38,7 @@ def compare_gradients(numerical_grad, analytical_grad):
         difference = num_grad - ana_grad
         # print('Size of num_grad for param', param_name, num_grad.shape)
         # print('Size of ana_grad for param', param_name, ana_grad.shape)
-        print(f'Difference between numerical and analytical gradients for param {param_name}: {difference}')
+        # print(f'Difference between numerical and analytical gradients for param {param_name}: {difference}')
         # TODO: plot difference
 
 
@@ -167,7 +167,8 @@ def forward_pass(RNN, X, Y, h0):
     # Forward pass
     for t in range(seq_length):
         xt = X[:, t].reshape(-1, 1)
-        h[:, t + 1] = np.tanh(np.dot(RNN.W, h[:, t].reshape(-1, 1)) + np.dot(RNN.U, xt) + RNN.b).squeeze()
+        a_t = np.dot(RNN.W, h[:, t].reshape(-1, 1)) + np.dot(RNN.U, xt) + RNN.b
+        h[:, t + 1] = np.tanh(a_t).squeeze()
         ot = np.dot(RNN.V, h[:, t + 1].reshape(-1, 1)) + RNN.c
         yt_hat = softmax(ot.flatten())
         p[:, t] = softmax(ot).squeeze()
@@ -180,8 +181,8 @@ def forward_pass(RNN, X, Y, h0):
 def backward_pass(RNN, grads, x, y, h, p):
     """Compute gradients for the backward pass."""
     # Initialize gradients as zero
-    grads.U, grads.W, grads.V, grads.b, grads.c = np.zeros_like(RNN.U), np.zeros_like(RNN.W), np.zeros_like(
-        RNN.V), np.zeros_like(RNN.b), np.zeros_like(RNN.c)
+    # grads.U, grads.W, grads.V, grads.b, grads.c = np.zeros_like(RNN.U), np.zeros_like(RNN.W), np.zeros_like(
+    #     RNN.V), np.zeros_like(RNN.b), np.zeros_like(RNN.c)
 
     dnext_h = np.zeros_like(h[:, 0].reshape(-1, 1))
 
@@ -202,6 +203,12 @@ def backward_pass(RNN, grads, x, y, h, p):
         grads.U += np.dot(dnext_h, x[:, t].reshape(-1, 1).T)
         grads.b += dnext_h
 
+        # for param_name in vars(grads).keys():
+        #     grad = getattr(grads, param_name)
+        #     print('Size of grad for param', param_name, grad.shape)
+            # if param_name == 'U':
+            #     U = getattr(grads, param_name)
+            #     print(U)
     return grads
 
 
@@ -237,7 +244,7 @@ def preprocess_text(text):
 def set_hyperparams():
     dimensionality_hidden_layer = 5
     eta = 0.1
-    seq_length = 2
+    seq_length = 9
 
     return [dimensionality_hidden_layer, eta, seq_length]
 
@@ -272,6 +279,10 @@ def main():
     numerical_grad = compute_grads_num(X, Y, rnn_model, 0.0001)
 
     gradients = Gradients(rnn_model)
+    # for param_name in vars(gradients).keys():
+    #     grad = getattr(numerical_grad, param_name)
+    #     print('Size of ana_grad for param', param_name, grad.shape)
+
     analytical_gradients = backward_pass(rnn_model, gradients, X, Y, h, p)
 
     compare_gradients(numerical_grad, analytical_gradients)
