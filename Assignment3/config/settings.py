@@ -11,8 +11,9 @@ GDparams = {
     'lambda': 2.15714286e-03,
     'n_batch': 100,
     'eta_min': 0.00001,
-    'eta_max': 0.1,
+    'eta_max': 0.01,
     'n_epochs': 50,
     'cycles': 3,
-    'eta_s': 800
+    #'eta_s': 800,
+    'update_steps': 1000
 }

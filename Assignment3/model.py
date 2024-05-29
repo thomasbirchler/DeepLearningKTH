@@ -1,7 +1,7 @@
 import numpy as np
 
 class NeuralNetwork:
-    def __init__(self, layer_dims, batch_size, number_of_labels, reg=0.0, seed=400):
+    def __init__(self, layer_dims, batch_size, GDparams, reg=0.0, seed=400):
         """
         Initializes the parameters for a neural network with variable number of layers.
 
@@ -14,8 +14,8 @@ class NeuralNetwork:
         self.parameters = {}
         self.layer_dim = layer_dims
         self.num_layers = len(layer_dims)
-        self.reg = reg
         self.batch_size = batch_size
+        self.lambda_ = GDparams['lambda']
 
         # Initialize weights and biases for each layer
         for i in range(1, self.num_layers):
@@ -23,7 +23,7 @@ class NeuralNetwork:
             #self.parameters[f'b{i}'] = np.random.randn(layer_dims[i], batch_size) * 0.01
             self.parameters[f'b{i}'] = np.random.randn(layer_dims[i], 1) * 0.01
             self.parameters[f'X_{i-1}'] = np.zeros((layer_dims[i-1], batch_size))
-        self.parameters[f'X_{self.num_layers-1}'] = np.zeros((number_of_labels, batch_size))
+        self.parameters[f'X_{self.num_layers-1}'] = np.zeros((layer_dims[-1], batch_size))
         
         
     def get_parameters(self):
@@ -35,7 +35,7 @@ class NeuralNetwork:
         """
         return self.parameters
     
-    def forward_pass(self, X, Y_true):
+    def forward_pass(self, X):
         """
         Performs a forward pass through the neural network.
 
@@ -44,7 +44,6 @@ class NeuralNetwork:
 
         Returns:
         numpy.ndarray: Predicted probabilities of shape (output_dim, n_samples).
-        float: Cross-entropy loss.
         """
         
         self.parameters['X_0'] = X
@@ -63,16 +62,15 @@ class NeuralNetwork:
         Z = np.dot(W, X) + b
 
         Y_predicted = self.softmax(Z)
-        loss = self.compute_loss(Y_true, Y_predicted)
 
-        return Y_predicted, loss
+        return Y_predicted
     
 
     def backward_pass(self, Y_predicted, Y_true):
         grads = self.parameters.copy()
         G = -(Y_true - Y_predicted)
 
-        for i in range(self.num_layers-1, 0, -1):
+        for i in range(self.num_layers-1, 1, -1):
             X = self.parameters[f'X_{i-1}']
             # grads[f'W{i}'] = 1/self.num_layers * np.dot(G, X.T)
             # grads[f'b{i}'] = 1/self.num_layers * np.sum(G, axis=1, keepdims=True)
@@ -87,25 +85,62 @@ class NeuralNetwork:
 
         return grads
     
+    def update_weights(self, X, Y, eta):
+        """
+        Update the weights and biases of the neural network using the gradients.
 
-    def compute_loss(self, Y, P):
+        Args:
+        X (numpy.ndarray): Input data of shape (input_dim, n_samples).
+        Y (numpy.ndarray): True labels (one-hot encoded) of shape (output_dim, n_samples).
+        eta (float): Learning rate.
+        """
+        Y_predicted = self.forward_pass(X)
+        grads = self.backward_pass(Y_predicted, Y)
+        for i in range(1, self.num_layers):
+            self.parameters[f'W{i}'] -= eta * grads[f'W{i}']
+            self.parameters[f'b{i}'] -= eta * grads[f'b{i}']
+
+    
+
+    def compute_loss(self, X, Y_true):
         """
         Computes the cross-entropy loss.
         
         Args:
+            X (numpy.ndarray): Input data of shape (input_dim, n_samples).
             Y (numpy.ndarray): True labels (one-hot encoded), shape (output_dim, n_samples).
-            P (numpy.ndarray): Predicted probabilities from the softmax layer, shape (output_dim, n_samples).
 
         Returns:
             float: Cross-entropy loss.
         """
-        m = Y.shape[1]
-        first_term = -np.sum(Y * np.log(P + 1e-9)) / m  # Add a small value to prevent log(0)
+
+        P = self.forward_pass(X)
+
+        m = Y_true.shape[1]
+        first_term = -np.sum(Y_true * np.log(P + 1e-9)) / m  # Add a small value to prevent log(0)
         second_term = 0
         for i in range(1, self.num_layers-1):
             second_term += np.sum(np.square(self.parameters[f'W{i}']))
-        loss = first_term + self.reg * second_term
+        loss = first_term + self.lambda_ * second_term
+        
         return loss
+    
+    
+    def compute_accuracy(self, X, Y):
+        """
+        Computes the accuracy of the neural network model.
+        
+        Args:
+            X (numpy.ndarray): Input data of shape (input_dim, n_samples).
+            Y (numpy.ndarray): True labels (one-hot encoded) of shape (output_dim, n_samples).
+        
+        Returns:
+            float: Accuracy of the model as a percentage.
+        """
+        Y_predicted = self.forward_pass(X, Y)
+        correct = np.sum(np.argmax(Y, axis=0) == np.argmax(Y_predicted, axis=0))
+        accuracy = correct / Y.shape[1] * 100
+        return accuracy
     
     
 
@@ -193,4 +228,8 @@ class NeuralNetwork:
                 difference_abs[key] = ana_grad[key] - num_grad[key]
                 difference_rel[key] = np.abs(ana_grad[key] - num_grad[key]) / np.maximum(1e-6, np.abs(ana_grad[key]) + np.abs(num_grad[key]))
             
+
+        print('relative error:', difference_rel)
+        print('absolut error:', difference_abs)
         return difference_rel, difference_abs
+    

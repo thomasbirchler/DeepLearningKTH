@@ -23,9 +23,13 @@ def preprocess_images(X):
     return (normalized_X - mean_X) / std_X
 
 def load_and_preprocess_data(filenames_train, filenames_test):
+    
     X_all, Y_all, y_all = load_batch(filenames_train)
-    X_train, Y_train, y_train = X_all[:, :49000], Y_all[:, :49000], y_all[:49000]
-    X_val, Y_val, y_val = X_all[:, 49000:50000], Y_all[:, 49000:50000], y_all[49000:50000]
+
+    proportion = int(0.8 * X_all.shape[1])
+    
+    X_train, Y_train, y_train = X_all[:, :proportion], Y_all[:, :proportion], y_all[:proportion]
+    X_val, Y_val, y_val = X_all[:, proportion:-1], Y_all[:, proportion:-1], y_all[proportion:-1]
     X_test, Y_test, y_test = load_batch(filenames_test)
 
     X_train = preprocess_images(X_train)
