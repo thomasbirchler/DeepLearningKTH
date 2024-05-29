@@ -1,7 +1,7 @@
 import numpy as np
 import pickle
 
-def load_batch(filename, data_path='../Dataset/cifar-10-batches-py/'):
+def load_batch(filename, data_path='Assignment3/data/cifar-10-batches-py/'):
     X_all = np.empty((3 * 1024, 0))
     y_all = np.empty((0,))
 
