@@ -1,7 +1,7 @@
 import numpy as np
 
 class NeuralNetwork:
-    def __init__(self, layer_dims, batch_size, GDparams, reg=0.0, seed=400):
+    def __init__(self, layer_dims, batch_size, GDparams, seed=400):
         """
         Initializes the parameters for a neural network with variable number of layers.
 
@@ -74,14 +74,14 @@ class NeuralNetwork:
             X = self.parameters[f'X_{i-1}']
             # grads[f'W{i}'] = 1/self.num_layers * np.dot(G, X.T)
             # grads[f'b{i}'] = 1/self.num_layers * np.sum(G, axis=1, keepdims=True)
-            grads[f'W{i}'] = 1/self.batch_size * np.dot(G, X.T)
+            grads[f'W{i}'] = 1/self.batch_size * np.dot(G, X.T) + (2 * self.lambda_ * self.parameters[f'W{i}'])
             grads[f'b{i}'] = 1/self.batch_size * np.sum(G, axis=1, keepdims=True)
             G = np.dot(self.parameters[f'W{i}'].T, G)
             G = G * (X > 0)
         # self.parameters[f'W1'] = 1/self.num_layers * np.dot(G, self.parameters['X_0'].T)
         # self.parameters[f'b1'] = 1/self.num_layers * np.sum(G, axis=1, keepdims=True)
-        self.parameters[f'W1'] = 1/self.batch_size * np.dot(G, self.parameters['X_0'].T)
-        self.parameters[f'b1'] = 1/self.batch_size * np.sum(G, axis=1, keepdims=True)
+        grads[f'W1'] = 1/self.batch_size * np.dot(G, self.parameters['X_0'].T) + (2 * self.lambda_ * self.parameters['W1'])
+        grads[f'b1'] = 1/self.batch_size * np.sum(G, axis=1, keepdims=True)
 
         return grads
     
@@ -102,9 +102,9 @@ class NeuralNetwork:
 
     
 
-    def compute_loss(self, X, Y_true):
+    def compute_loss_cost(self, X, Y_true):
         """
-        Computes the cross-entropy loss.
+        Computes the loss and cross-entropy cost.
         
         Args:
             X (numpy.ndarray): Input data of shape (input_dim, n_samples).
@@ -112,18 +112,19 @@ class NeuralNetwork:
 
         Returns:
             float: Cross-entropy loss.
+            float: Cross-entropy cost.
         """
 
         P = self.forward_pass(X)
 
         m = Y_true.shape[1]
-        first_term = -np.sum(Y_true * np.log(P + 1e-9)) / m  # Add a small value to prevent log(0)
+        loss = -np.sum(Y_true * np.log(P + 1e-9)) / m  # Add a small value to prevent log(0)
         second_term = 0
         for i in range(1, self.num_layers-1):
             second_term += np.sum(np.square(self.parameters[f'W{i}']))
-        loss = first_term + self.lambda_ * second_term
+        cost = loss + self.lambda_ * second_term
         
-        return loss
+        return loss, cost
     
     
     def compute_accuracy(self, X, Y):
@@ -137,7 +138,7 @@ class NeuralNetwork:
         Returns:
             float: Accuracy of the model as a percentage.
         """
-        Y_predicted = self.forward_pass(X, Y)
+        Y_predicted = self.forward_pass(X)
         correct = np.sum(np.argmax(Y, axis=0) == np.argmax(Y_predicted, axis=0))
         accuracy = correct / Y.shape[1] * 100
         return accuracy

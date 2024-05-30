@@ -26,7 +26,7 @@ def load_and_preprocess_data(filenames_train, filenames_test):
     
     X_all, Y_all, y_all = load_batch(filenames_train)
 
-    proportion = int(0.8 * X_all.shape[1])
+    proportion = int(49/50 * X_all.shape[1])
     
     X_train, Y_train, y_train = X_all[:, :proportion], Y_all[:, :proportion], y_all[:proportion]
     X_val, Y_val, y_val = X_all[:, proportion:-1], Y_all[:, proportion:-1], y_all[proportion:-1]

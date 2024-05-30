@@ -1,10 +1,8 @@
 from data_utils import load_and_preprocess_data
-#from training import train_model
 from model import NeuralNetwork
 from config.settings import GDparams, FILENAMES_TRAIN, FILENAMES_TEST
-import numpy as np
-from config.settings import GDparams
 from training import train_model
+from plotting import plot_losses, plot_costs, plot_accuracies
 
 
 def main():
@@ -12,9 +10,9 @@ def main():
 
     input_size = X_train.shape[0]
     output_size = Y_train.shape[0]
-    batch_size = 64
+    batch_size = GDparams['batch_size']
 
-    layer_dims = [input_size, 50, output_size]
+    layer_dims = [input_size, 100, output_size]
 
 
     nn = NeuralNetwork(layer_dims, batch_size, GDparams)
@@ -29,7 +27,20 @@ def main():
     #Y_predicted, _ = nn.forward_pass(X_sample, Y_sample)
     
 
-    train_model(nn, X_train, Y_train, X_val, Y_val, GDparams)
+    loss_train, loss_val, cost_train, cost_val, accuracy_train, accuracy_val = train_model(nn, X_train, Y_train, X_val, Y_val, GDparams)
+
+    #accuracy_train = nn.compute_accuracy(X_train, Y_train)
+    #accuracy_val = nn.compute_accuracy(X_val, Y_val)
+    accuracy_test = nn.compute_accuracy(X_test, Y_test)
+
+    print(f'Accuracy on train set: {accuracy_train}')
+    print(f'Accuracy on validation set: {accuracy_val}')
+    print(f'Accuracy on test set: {accuracy_test}')
+
+    plot_losses(loss_train, loss_val, GDparams)
+    plot_costs(cost_train, cost_val, GDparams)
+    plot_accuracies(accuracy_train, accuracy_val)
+
 
     print('Finito!')
 
