@@ -1,7 +1,7 @@
 import numpy as np
 
 class NeuralNetwork:
-    def __init__(self, layer_dims, batch_size, GDparams, seed=400):
+    def __init__(self, layer_dims, batch_size, GDparams, seed=400, initalizer='He'):
         """
         Initializes the parameters for a neural network with variable number of layers.
 
@@ -16,13 +16,31 @@ class NeuralNetwork:
         self.num_layers = len(layer_dims)
         self.batch_size = batch_size
         self.lambda_ = GDparams['lambda']
+        self.running_mu = {}
+        self.running_var = {}
+
+        
 
         # Initialize weights and biases for each layer
         for i in range(1, self.num_layers):
-            self.parameters[f'W{i}'] = np.random.randn(layer_dims[i], layer_dims[i-1]) * (1 / np.sqrt(layer_dims[i]))
-            #self.parameters[f'b{i}'] = np.random.randn(layer_dims[i], batch_size) * 0.01
-            self.parameters[f'b{i}'] = np.random.randn(layer_dims[i], 1) * 0.01
+            
+            if initalizer == 'He':
+                initializer_multiplier = np.sqrt(2 / layer_dims[i])
+            elif initalizer == 'Xavier':
+                initializer_multiplier = np.sqrt(1 / layer_dims[i])
+
+            self.parameters[f'W{i}'] = np.random.randn(layer_dims[i], layer_dims[i-1]) * initializer_multiplier
+            self.parameters[f'b{i}'] = np.random.randn(layer_dims[i], 1) * initializer_multiplier
             self.parameters[f'X_{i-1}'] = np.zeros((layer_dims[i-1], batch_size))
+            # For batch normalization
+            self.parameters[f'Z{i}'] = np.ones((layer_dims[i], batch_size))
+            self.parameters[f'Z_hat{i}'] = np.ones((layer_dims[i], batch_size))
+            self.parameters[f'gamma{i}'] = np.ones((layer_dims[i], 1))
+            self.parameters[f'beta{i}'] = np.zeros((layer_dims[i], 1))
+            self.running_mu[i] = np.zeros((layer_dims[i], 1))
+            self.running_var[i] = np.ones((layer_dims[i], 1))
+
+
         self.parameters[f'X_{self.num_layers-1}'] = np.zeros((layer_dims[-1], batch_size))
         
         
@@ -35,7 +53,7 @@ class NeuralNetwork:
         """
         return self.parameters
     
-    def forward_pass(self, X):
+    def forward_pass(self, X, training=False):
         """
         Performs a forward pass through the neural network.
 
@@ -55,7 +73,21 @@ class NeuralNetwork:
             b = self.parameters[f'b{i}']
             X = self.parameters[f'X_{i-1}']
             Z = np.dot(W, X) + b
-            self.parameters[f'X_{i}'] = np.maximum(0, Z)
+            self.parameters[f'Z{i}'] = Z
+            
+            mu = np.mean(Z, axis=1, keepdims=True)
+            var = np.var(Z, axis=1, keepdims=True)
+            Z_norm = (Z - mu) / np.sqrt(var + 1e-8)
+            self.parameters[f'Z_hat{i}'] = Z_norm
+            Z_tilde = self.parameters[f'gamma{i}'] * Z_norm + self.parameters[f'beta{i}']
+
+            self.parameters[f'X_{i}'] = np.maximum(0, Z_tilde)
+
+            # Update running averages
+            if training == True:
+                self.running_mu[i] = 0.9 * self.running_mu[i] + 0.1 * mu
+                self.running_var[i] = 0.9 * self.running_var[i] + 0.1 * var
+
         W = self.parameters[f'W{num_layers-1}']
         b = self.parameters[f'b{num_layers-1}']
         X = self.parameters[f'X_{num_layers-2}']
@@ -70,20 +102,58 @@ class NeuralNetwork:
         grads = self.parameters.copy()
         G = -(Y_true - Y_predicted)
 
-        for i in range(self.num_layers-1, 1, -1):
-            X = self.parameters[f'X_{i-1}']
-            # grads[f'W{i}'] = 1/self.num_layers * np.dot(G, X.T)
-            # grads[f'b{i}'] = 1/self.num_layers * np.sum(G, axis=1, keepdims=True)
-            grads[f'W{i}'] = 1/self.batch_size * np.dot(G, X.T) + (2 * self.lambda_ * self.parameters[f'W{i}'])
-            grads[f'b{i}'] = 1/self.batch_size * np.sum(G, axis=1, keepdims=True)
-            G = np.dot(self.parameters[f'W{i}'].T, G)
-            G = G * (X > 0)
-        # self.parameters[f'W1'] = 1/self.num_layers * np.dot(G, self.parameters['X_0'].T)
-        # self.parameters[f'b1'] = 1/self.num_layers * np.sum(G, axis=1, keepdims=True)
-        grads[f'W1'] = 1/self.batch_size * np.dot(G, self.parameters['X_0'].T) + (2 * self.lambda_ * self.parameters['W1'])
-        grads[f'b1'] = 1/self.batch_size * np.sum(G, axis=1, keepdims=True)
+        for i in range(self.num_layers-1, 0, -1):
+            
+            if i == self.num_layers-1:
+                X = self.parameters[f'X_{i-1}']
+                grads[f'W{i}'] = 1/self.batch_size * np.dot(G, X.T) + (2 * self.lambda_ * self.parameters[f'W{i}'])
+                grads[f'b{i}'] = 1/self.batch_size * np.sum(G, axis=1, keepdims=True)
+                G = np.dot(self.parameters[f'W{i}'].T, G)
+                G = G * (X > 0)
+                continue
+
+            else:
+                X = self.parameters[f'X_{i-1}']
+                grads[f'gamma{i}'] = np.sum(G * self.parameters[f'Z_hat{i}'], axis=1, keepdims=True) / self.batch_size
+                grads[f'beta{i}'] = np.sum(G, axis=1, keepdims=True) / self.batch_size
+                G = G * self.parameters[f'gamma{i}']
+                G = self.batch_norm_backward(G, self.parameters[f'Z{i}'], self.running_mu[i], self.running_var[i])
+
+                grads[f'W{i}'] = 1/self.batch_size * np.dot(G, X.T) + (2 * self.lambda_ * self.parameters[f'W{i}'])
+                grads[f'b{i}'] = 1/self.batch_size * np.sum(G, axis=1, keepdims=True)
+                G = np.dot(self.parameters[f'W{i}'].T, G)
+                G = G * (X > 0)
+
+                # Z = self.parameters[f'Z{i}']
+                # Z_norm = (Z - self.running_mu[i]) / np.sqrt(self.running_var[i] + 1e-8)
+                # dZ_tilde = G * self.parameters[f'gamma{i}']
+                # dgamma = np.sum(dZ_tilde * Z_norm, axis=1, keepdims=True)
+                # dbeta = np.sum(dZ_tilde, axis=1, keepdims=True)
+                # dZ_norm = dZ_tilde / np.sqrt(self.running_var[i] + 1e-8)
+                # G = dZ_norm
+            
+
+        #grads[f'W1'] = 1/self.batch_size * np.dot(G, self.parameters['X_0'].T) + (2 * self.lambda_ * self.parameters['W1'])
+        #grads[f'b1'] = 1/self.batch_size * np.sum(G, axis=1, keepdims=True)
 
         return grads
+    
+    def batch_norm_backward(self, G, S, mu, v, epsilon=1e-8):
+
+        n = G.shape[1]
+        sigma1 = (v + epsilon) ** -0.5
+        sigma2 = (v + epsilon) ** -1.5
+
+        G1 = G * sigma1
+        G2 = G * sigma2
+        D = S - mu
+
+        c = np.sum(G2 * D, axis=1, keepdims=True)
+
+        G = G1 -  np.dot(G1, np.ones((n, n))) / n - D * c / n
+
+        return G
+
     
     def update_weights(self, X, Y, eta):
         """
@@ -94,11 +164,15 @@ class NeuralNetwork:
         Y (numpy.ndarray): True labels (one-hot encoded) of shape (output_dim, n_samples).
         eta (float): Learning rate.
         """
-        Y_predicted = self.forward_pass(X)
+        Y_predicted = self.forward_pass(X, training=True)
         grads = self.backward_pass(Y_predicted, Y)
+
         for i in range(1, self.num_layers):
             self.parameters[f'W{i}'] -= eta * grads[f'W{i}']
             self.parameters[f'b{i}'] -= eta * grads[f'b{i}']
+            self.parameters[f'gamma{i}'] -= eta * grads[f'gamma{i}']
+            self.parameters[f'beta{i}'] -= eta * grads[f'beta{i}']
+
 
     
 

@@ -30,8 +30,9 @@ def train_model(nn, X_train, Y_train, X_val, Y_val, GDparams):
     update_steps = GDparams['update_steps']
     batch_size = GDparams['batch_size']
     
-    k = 2
-    eta_s = k * X_train.shape[1] / batch_size
+    #k = 2
+    #eta_s = k * X_train.shape[1] / batch_size
+    eta_s = GDparams['eta_s']
 
     step = 0
     epoch = 0
