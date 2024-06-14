@@ -53,7 +53,7 @@ def train_model(nn, X_train, Y_train, X_val, Y_val, GDparams):
 
             eta = cyclical_learning_rate(GDparams, step, eta_s)
             
-            nn.update_weights(X_batch, Y_batch, eta)
+            nn.update_weights(X_batch, Y_batch, eta, batch_norm=GDparams['batch_norm'])
             
             #accuracy_train, accuracy_val, cost_train, cost_val, loss_train, loss_val = update_accuracy_cost_loss(
             #    nn, X_batch, Y_batch, X_val, Y_val, step, accuracy_train, accuracy_val, cost_train, cost_val, loss_train, loss_val)

@@ -53,7 +53,7 @@ class NeuralNetwork:
         """
         return self.parameters
     
-    def forward_pass(self, X, training=False):
+    def forward_pass(self, X, training=False, batch_norm=False):
         """
         Performs a forward pass through the neural network.
 
@@ -75,16 +75,19 @@ class NeuralNetwork:
             Z = np.dot(W, X) + b
             self.parameters[f'Z{i}'] = Z
             
-            mu = np.mean(Z, axis=1, keepdims=True)
-            var = np.var(Z, axis=1, keepdims=True)
-            Z_norm = (Z - mu) / np.sqrt(var + 1e-8)
-            self.parameters[f'Z_hat{i}'] = Z_norm
-            Z_tilde = self.parameters[f'gamma{i}'] * Z_norm + self.parameters[f'beta{i}']
+            if batch_norm == True:
+                mu = np.mean(Z, axis=1, keepdims=True)
+                var = np.var(Z, axis=1, keepdims=True)
+                Z_norm = (Z - mu) / np.sqrt(var + 1e-8)
+                self.parameters[f'Z_hat{i}'] = Z_norm
+                Z_tilde = self.parameters[f'gamma{i}'] * Z_norm + self.parameters[f'beta{i}']
 
-            self.parameters[f'X_{i}'] = np.maximum(0, Z_tilde)
+                self.parameters[f'X_{i}'] = np.maximum(0, Z_tilde)
+            else:
+                self.parameters[f'X_{i}'] = np.maximum(0, Z)
 
             # Update running averages
-            if training == True:
+            if training == True and batch_norm == True:
                 self.running_mu[i] = 0.9 * self.running_mu[i] + 0.1 * mu
                 self.running_var[i] = 0.9 * self.running_var[i] + 0.1 * var
 
@@ -98,7 +101,7 @@ class NeuralNetwork:
         return Y_predicted
     
 
-    def backward_pass(self, Y_predicted, Y_true):
+    def backward_pass(self, Y_predicted, Y_true, batch_norm=False):
         grads = self.parameters.copy()
         G = -(Y_true - Y_predicted)
 
@@ -114,10 +117,11 @@ class NeuralNetwork:
 
             else:
                 X = self.parameters[f'X_{i-1}']
-                grads[f'gamma{i}'] = np.sum(G * self.parameters[f'Z_hat{i}'], axis=1, keepdims=True) / self.batch_size
-                grads[f'beta{i}'] = np.sum(G, axis=1, keepdims=True) / self.batch_size
-                G = G * self.parameters[f'gamma{i}']
-                G = self.batch_norm_backward(G, self.parameters[f'Z{i}'], self.running_mu[i], self.running_var[i])
+                if batch_norm == True:
+                    grads[f'gamma{i}'] = np.sum(G * self.parameters[f'Z_hat{i}'], axis=1, keepdims=True) / self.batch_size
+                    grads[f'beta{i}'] = np.sum(G, axis=1, keepdims=True) / self.batch_size
+                    G = G * self.parameters[f'gamma{i}']
+                    G = self.batch_norm_backward(G, self.parameters[f'Z{i}'], self.running_mu[i], self.running_var[i])
 
                 grads[f'W{i}'] = 1/self.batch_size * np.dot(G, X.T) + (2 * self.lambda_ * self.parameters[f'W{i}'])
                 grads[f'b{i}'] = 1/self.batch_size * np.sum(G, axis=1, keepdims=True)
@@ -155,7 +159,7 @@ class NeuralNetwork:
         return G
 
     
-    def update_weights(self, X, Y, eta):
+    def update_weights(self, X, Y, eta, batch_norm):
         """
         Update the weights and biases of the neural network using the gradients.
 
@@ -164,8 +168,8 @@ class NeuralNetwork:
         Y (numpy.ndarray): True labels (one-hot encoded) of shape (output_dim, n_samples).
         eta (float): Learning rate.
         """
-        Y_predicted = self.forward_pass(X, training=True)
-        grads = self.backward_pass(Y_predicted, Y)
+        Y_predicted = self.forward_pass(X, training=True, batch_norm=batch_norm)
+        grads = self.backward_pass(Y_predicted, Y, batch_norm=batch_norm)
 
         for i in range(1, self.num_layers):
             self.parameters[f'W{i}'] -= eta * grads[f'W{i}']
@@ -253,10 +257,10 @@ class NeuralNetwork:
                     old_val = self.parameters[f'b{i}'][j, :].copy()
                     
                     self.parameters[f'b{i}'][j, 0] = old_val + h
-                    _, c2 = self.forward_pass(X, Y)
+                    c2, _ = self.compute_loss_cost(X, Y)
 
                     self.parameters[f'b{i}'][j, :] = old_val - h
-                    _, c1 = self.forward_pass(X, Y)
+                    c1, _ = self.compute_loss_cost(X, Y)
 
                     self.parameters[f'b{i}'][j, :] = old_val
                     b_grads[j] = (c2 - c1) / (2 * h)
@@ -266,13 +270,13 @@ class NeuralNetwork:
                 # Gradients for weights
                 W_grads = np.zeros_like(self.parameters[f'W{i}'])
                 for idx in np.ndindex(W_grads.shape):
-                    old_val = self.parameters[f'W{i}'][idx]
+                    old_val = self.parameters[f'W{i}'][idx].copy()
                     
                     self.parameters[f'W{i}'][idx] = old_val + h
-                    _, c2 = self.forward_pass(X, Y)
+                    c2, _ = self.compute_loss_cost(X, Y)
 
                     self.parameters[f'W{i}'][idx] = old_val - h
-                    _, c1 = self.forward_pass(X, Y)
+                    c1, _ = self.compute_loss_cost(X, Y)
 
                     self.parameters[f'W{i}'][idx] = old_val
                     W_grads[idx] = (c2 - c1) / (2 * h)
